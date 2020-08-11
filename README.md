@@ -5,5 +5,5 @@ This project is still a work in progress. In this project, I present a detailed 
 
 ### Additional Info
  * Author: Noah Forougi
- * Email: noah.forougi (at) kellog.northwesterne.du
+ * Email: noah.forougi (at) kellog.northwestern.edu
 
