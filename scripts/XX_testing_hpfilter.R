@@ -3,10 +3,13 @@ rm(list = ls())
 library(mFilter)
 library(lubridate)
 library(forecast)
+library(tidyverse)
+library(here)
+library(data.table)
+library(plotly)
 
-h8form_c <- read_csv(file = here("proc", "h8form_c.csv"))
 
-h8form_h <- read_csv(file = here("data", "data.csv"))
+h8form_h <- fread(file = here("proc", "h8form_h.csv"))
 
 
 dat <- h8form_h %>%
@@ -14,11 +17,30 @@ dat <- h8form_h %>%
            variable == "Bank credit" & 
            adjusted == "seasonally adjusted" &
            growth == "level") %>%
-  mutate(date = myd(paste(date, "01"))) %>%
-  select(date, value)
+  mutate(date = myd(paste(date, "01")))
+
+filtered <- dat %>% 
+  select(value) %>%
+  ts(., frequency = 144) %>% 
+  hpfilter(., freq = 12)
 
 
-obj <- ts(dat[,2], start = ymd("19800101"), end = ymd("2019sep01"), frequency = 12)
+ready <- tibble(
+  dat, 
+  trend = filtered$trend, 
+  cycle = filtered$cycle
+)
 
-hpfilter(obj, freq = "144")
 
+
+
+
+ready <- data.frame(cbind(dat,
+                 trend = filtered$trend, 
+                 cycle =filtered$cycle))
+
+ggplotly(ggplot(data = ready, aes(x = date)) + 
+  geom_line(aes(y = value, color = "red")) + 
+  geom_line(aes(y = trend.value, color = "blue")))
+
+data.frame(filtered[c("trend", "cycle")])

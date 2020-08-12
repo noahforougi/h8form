@@ -2,8 +2,15 @@
 library(shiny)
 library(plotly)
 library(here)
+library(mFilter)
+library(lubridate)
+library(forecast)
+library(tidyverse)
+library(data.table)
+library(shinydashboard)
 
 h8form_c <- read_csv(file = here("proc", "h8form_c.csv"))
+h8form_h <- read_csv(file = here("proc", "h8form_h.csv"))
 
 # UI -------------------------------------------------------------------------------------------------------
 
@@ -67,13 +74,39 @@ ui <- dashboardPage(
                 
                 fluidPage(
                     box(
-                        title = "Decomposition",
-                        background = "light-blue", 
-                        width = 12,
-                        status = "primary"
-                        
-                        
-                    )),
+                        title = "Hodtrick Prescott Filtered Time Series", width = 12, status = "primary",
+                        color = "aqua", 
+                        selectInput('bank_choice',
+                                    'Choose type of commercial bank', 
+                                    levels(as.factor(h8form_h$id)), 
+                                    selected = "all commercial banks"),
+                        selectInput('asset_liability_choice',
+                                    'Choose Asset or Liability Type',
+                                    levels(as.factor(h8form_h$variable)),
+                                    selected = "Bank credit"),
+                        selectInput('sa_nsa_choice',
+                                    'Choose Seasonally Adjusted or Non Seasonally Adjusted Values', 
+                                    levels(as.factor(h8form_h$adjusted)), 
+                                    selected = "not seasonally adjusted"),
+                        selectInput('growth_choice',
+                                    'Choose Level or Annula Growth Rate', 
+                                    levels(as.factor(h8form_h$growth)), 
+                                    selected = "level"),
+                        sliderInput("param_choice", 
+                                    "Frequency Paramter", 
+                                    min = 0, max = 1000, 
+                                    value = 144), 
+                        dateInput(inputId = "date", 
+                                  label = "Select start date", 
+                                  value = ymd(20000101), 
+                                  min = ymd(19800101),
+                                  max = ymd(20190101)
+                                  ),
+                        plotlyOutput("plot2")
+        
+
+                    )
+                    ),
                 
                 fluidPage(
                     box(
@@ -95,6 +128,7 @@ ui <- dashboardPage(
 
 server <- function(input, output) {
     
+    # Introduction tab plots
     variable_choice <- reactive(input$type)
     
     output$plot1 <- renderPlotly(
@@ -106,9 +140,60 @@ server <- function(input, output) {
             ylab("Dollars (Billions)") + 
             theme_minimal() 
                    ))
-       
+    
+    
+    
+    # Trends tab plots
+    bank_choice <- reactive(input$bank_choice)
+    asset_liability_choice <- reactive(input$asset_liability_choice)
+    sa_nsa_choice <- reactive(input$sa_nsa_choice)
+    growth_choice <- reactive(input$growth_choice)
+    param_choice <- reactive(input$param_choice)
+    date <- reactive(input$date)
+    
+    dat <-  reactive({
+        h8form_h %>%
+            filter(id == input$bank_choice &
+                   variable == asset_liability_choice() & 
+                   adjusted == sa_nsa_choice() &
+                   growth == growth_choice()) %>%
+        mutate(date = myd(paste(date, "01")))
+    })
+    
+    filtered <- reactive({
+        dat() %>%
+            select(value) %>%
+            ts(., frequency = 12) %>% 
+            hpfilter(., freq =input$param_choice)[c("trend", "cycle")]
+    })
+    
+    
+    ready <- reactive({
+        tibble(
+        date_observation = dat$date,
+        variable = dat$variable, 
+        id = dat$id, 
+        adjusted = dat$adjusted, 
+        growth = dat$growth,
+        value = dat$value,
+        trend = filtered$trend, 
+        cycle = filtered$cycle
+        )
+    })
+    
 
-   
-}
+
+    output$plot2 <- renderPlot(
+        
+
+        ggplot(
+           data = ready(),
+           aes(x = date_observation)) + 
+                geom_line(aes(y = value123, color = "red")) + 
+                geom_line(aes(y = trend123, color = "blue")))
+    
+      }
 
 shinyApp(ui, server)
+
+
