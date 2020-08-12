@@ -24,6 +24,10 @@ filtered <- dat %>%
   ts(., frequency = 144) %>% 
   hpfilter(., freq = 12)
 
+as.vector(filtered$cycle)
+
+
+
 
 ready <- tibble(
   dat, 
@@ -31,7 +35,7 @@ ready <- tibble(
   cycle = filtered$cycle
 )
 
-
+class(ready)
 
 
 

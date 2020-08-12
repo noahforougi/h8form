@@ -64,17 +64,19 @@ ui <- dashboardPage(
             # Trends/Visualizations Tab
             tabItem(
                 tabName = "trends",
-                h2("Trends and Projections"),
+                h2("Time Series Analysis"),
                 p("In this part of the dashboard, you will be able to use long term historical data to decompose historical data, as well as make some forecasts."),
+                h4("What is a Hodrick Prescott Filter?"),
                 p("Decomposition: The Hodrick–Prescott filter (also known as Hodrick–Prescott decomposition) is a mathematical tool used in macroeconomics, 
                   especially in real business cycle theory, to remove the cyclical component of a time series from raw data. It is used to obtain a smoothed-curve 
                   representation of a time series, one that is more sensitive to long-term than to short-term fluctuations."),
-                p("Forecasts"),
                 
+                p("More mathematical explanation will be inserted here."),
+
                 
                 fluidPage(
                     box(
-                        title = "Hodtrick Prescott Filtered Time Series", width = 12, status = "primary",
+                        title = "Hodrick Prescott Filtered Time Series Decomposition", width = 12, status = "primary",
                         color = "aqua", 
                         selectInput('bank_choice',
                                     'Choose type of commercial bank', 
@@ -95,36 +97,35 @@ ui <- dashboardPage(
                         sliderInput("param_choice", 
                                     "Frequency Paramter", 
                                     min = 0, max = 1000, 
-                                    value = 144), 
-                        dateInput(inputId = "date", 
-                                  label = "Select start date", 
-                                  value = ymd(20000101), 
-                                  min = ymd(19800101),
-                                  max = ymd(20190101)
-                                  ),
+                                    value = 144),
                         plotlyOutput("plot2")
         
 
                     )
                     ),
                 
+                h4("What is Forecasting?"),
+                p("Making predictions about the future is called extrapolation in the classical statistical handling of time series data. More modern fields focus on the topic and refer to it as time series forecasting. Forecasting involves taking models fit on historical data and using them to predict future observations."),
+                
+                p("More mathematical explanation will be inserted here."),
                 fluidPage(
                     box(
                         title = "Forecast", 
-                        background = "aqua",
                         width = 12, 
                         status = "primary"
                         )
                     )
             ),
             
-            # Final tab content
+            
+            # Final Tab Content
             tabItem(
                 tabName = "statistics",
-                h2("Statistics tab content"),
-                p("In this part of the dashboard, there will be the opportunity to run some basic statistical tests to understand
-                      differences in these balance sheet data.")
-            ))))
+                h2("Statistical Tests"),
+                p("In this part of the dashboard, there will be the opportunity to run some basic statistical tests, like a difference in means test, to understand
+                      difference in these balance sheet data between banks.")
+                ))))
+
 
 server <- function(input, output) {
     
@@ -144,55 +145,37 @@ server <- function(input, output) {
     
     
     # Trends tab plots
-    bank_choice <- reactive(input$bank_choice)
-    asset_liability_choice <- reactive(input$asset_liability_choice)
-    sa_nsa_choice <- reactive(input$sa_nsa_choice)
-    growth_choice <- reactive(input$growth_choice)
-    param_choice <- reactive(input$param_choice)
-    date <- reactive(input$date)
-    
-    dat <-  reactive({
-        h8form_h %>%
-            filter(id == input$bank_choice &
-                   variable == asset_liability_choice() & 
-                   adjusted == sa_nsa_choice() &
-                   growth == growth_choice()) %>%
-        mutate(date = myd(paste(date, "01")))
-    })
-    
-    filtered <- reactive({
-        dat() %>%
-            select(value) %>%
-            ts(., frequency = 12) %>% 
-            hpfilter(., freq =input$param_choice)[c("trend", "cycle")]
-    })
-    
-    
-    ready <- reactive({
-        tibble(
-        date_observation = dat$date,
-        variable = dat$variable, 
-        id = dat$id, 
-        adjusted = dat$adjusted, 
-        growth = dat$growth,
-        value = dat$value,
-        trend = filtered$trend, 
-        cycle = filtered$cycle
-        )
-    })
-    
-
-
-    output$plot2 <- renderPlot(
-        
-
-        ggplot(
-           data = ready(),
-           aes(x = date_observation)) + 
-                geom_line(aes(y = value123, color = "red")) + 
-                geom_line(aes(y = trend123, color = "blue")))
-    
+    output$plot2 <- renderPlotly({
+      dat <- h8form_h %>%
+        filter(id == input$bank_choice &
+                 variable == input$asset_liability_choice & 
+                 adjusted == input$sa_nsa_choice &
+                 growth == input$growth_choice) %>%
+        mutate(date = myd(paste(date, "01"))) 
+      filtered <- dat %>%
+        select(value) %>%
+        ts(., frequency = 12) %>% 
+        hpfilter(., freq = input$param_choice)
+      
+      ready <- data.frame(
+        dat, 
+        trend = as.vector(filtered$trend), 
+        cycle = as.vector(filtered$cycle)
+      )
+      
+      
+      ggplotly(ready %>%
+                 ggplot(., aes(x = date)) +
+                 geom_line(aes(y = value, color = "red")) + 
+                 geom_line(aes(y = trend, color = "blue")) + 
+                 ylab("Dollar Value (Billions)") + 
+                 xlab("Date") +
+                 ggtitle(paste("Hodrick Prescott Filtered Decomposition of", input$asset_liability_choice), 
+                         subtitle = paste("Lambda Choice:" ,input$param_choice))
+      )
       }
+      )
+    }
 
 shinyApp(ui, server)
 
