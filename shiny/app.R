@@ -1,5 +1,4 @@
 # Load packages and read in data ---------------------------------------------------------------------------
-library(shiny)
 library(plotly)
 library(here)
 library(mFilter)
@@ -8,9 +7,12 @@ library(forecast)
 library(tidyverse)
 library(data.table)
 library(shinydashboard)
+library(tseries)
+library(shiny)
 
-h8form_c <- read_csv(file = here("proc", "h8form_c.csv"))
-h8form_h <- read_csv(file = here("proc", "h8form_h.csv"))
+
+h8form_c <- read_csv(file = here("shiny", "www", "h8form_c.csv"))
+h8form_h <- read_csv(file = here("shiny", "www", "h8form_h.csv"))
 
 # UI -------------------------------------------------------------------------------------------------------
 
@@ -67,12 +69,18 @@ ui <- dashboardPage(
                 h2("Time Series Analysis"),
                 p("In this part of the dashboard, you will be able to use long term historical data to decompose historical data, as well as make some forecasts."),
                 h4("What is a Hodrick Prescott Filter?"),
-                p("Decomposition: The Hodrick–Prescott filter (also known as Hodrick–Prescott decomposition) is a mathematical tool used in macroeconomics, 
+                p("The Hodrick–Prescott filter (also known as Hodrick–Prescott decomposition) is a mathematical tool used in macroeconomics, 
                   especially in real business cycle theory, to remove the cyclical component of a time series from raw data. It is used to obtain a smoothed-curve 
                   representation of a time series, one that is more sensitive to long-term than to short-term fluctuations."),
-                
-                p("More mathematical explanation will be inserted here."),
-
+                h4("How is a HP Filter Computed?"),
+                p("Hodrick and Prescott suggest a way to decompose a time series into a trend component and a cyclical component. With an adequately chosen value for the penalty parameter, Hodrick and Prescott put forth a following minimization problem to decompose a time series into a cyclical and trend component. This equation penalizes the cyclical component, which is  
+                  y_t - \tau_t, and penalizes variation in the growth rates of the trend component. More in depth looks into this topic can be found through various resources online. A main point in 
+                  the Hodrick Prescott decomposition is the correct choice of the penalty parameter. Ravn and Uhlig (2002) suggest a value of 129,600 for the penalty parameter, while Maravall and del Rio (2001)
+                  suggest anywhere in the interval of 100,000 to 140,000." ),
+                h4("Concerns about the HP Filter"),
+                p("There are some conditions under which the HP filter should be used. First, the time series must exist in an I(2) trend, which means that the series is stationary after its second difference. Moreover, noise in 
+                the data should be normally approximated. There has recently been a paper published by James Hamilton at UCSD that issues some concerns with this method. 
+                  "), 
                 
                 fluidPage(
                     box(
@@ -96,35 +104,35 @@ ui <- dashboardPage(
                                     selected = "level"),
                         sliderInput("param_choice", 
                                     "Frequency Paramter", 
-                                    min = 0, max = 1000, 
-                                    value = 144),
-                        plotlyOutput("plot2")
+                                    min = 100000, max = 140000, 
+                                    value = 129600),
+                        plotlyOutput("plot2"), 
+                        textOutput(outputId = "stationarity")
         
 
                     )
                     ),
                 
                 h4("What is Forecasting?"),
-                p("Making predictions about the future is called extrapolation in the classical statistical handling of time series data. More modern fields focus on the topic and refer to it as time series forecasting. Forecasting involves taking models fit on historical data and using them to predict future observations."),
+                p("Making predictions about the future is called extrapolation in the classical statistical handling of time series data. 
+                  More modern fields focus on the topic and refer to it as time series forecasting. Forecasting involves taking models fit on 
+                  historical data and using them to predict future observations."),
                 
                 p("More mathematical explanation will be inserted here."),
-                fluidPage(
-                    box(
+                fluidPage(box(
                         title = "Forecast", 
                         width = 12, 
                         status = "primary"
-                        )
-                    )
-            ),
+                        ))),
             
             
             # Final Tab Content
             tabItem(
                 tabName = "statistics",
                 h2("Statistical Tests"),
-                p("In this part of the dashboard, there will be the opportunity to run some basic statistical tests, like a difference in means test, to understand
-                      difference in these balance sheet data between banks.")
-                ))))
+                p("Something that we may want to do is to run some simple statistical tests to test differences in the balance sheet data for these groups. One such example 
+                  is a difference in means test. What this will tell us is what the average difference is for a particular variable between two groups. While this statistical test does not give reasons for
+                  the difference between groups, we can test this in different time periods between banks of different composition and investivate further once we run this test. ")))))
 
 
 server <- function(input, output) {
@@ -164,10 +172,16 @@ server <- function(input, output) {
       )
       
       
-      ggplotly(ready %>%
-                 ggplot(., aes(x = date)) +
-                 geom_line(aes(y = value, color = "red")) + 
-                 geom_line(aes(y = trend, color = "blue")) + 
+      ggplotly(
+        ready %>% 
+          mutate(trend = as.numeric(as.character(trend))) %>%
+          select(value, trend, date) %>%
+          pivot_longer(cols = c("value", "trend"), names_to = "Component") %>% 
+          ggplot(aes(x = date, y = value, color = Component)) + 
+          geom_line() + 
+          ggthemes::theme_clean() +
+          xlab("Date") + 
+          ylab("Dollars (Billions)") + 
                  ylab("Dollar Value (Billions)") + 
                  xlab("Date") +
                  ggtitle(paste("Hodrick Prescott Filtered Decomposition of", input$asset_liability_choice), 
@@ -175,8 +189,33 @@ server <- function(input, output) {
       )
       }
       )
+    
+    # Test stationarity in the data
+    output$stationarity <- renderPrint({
+      stationarity <- h8form_h %>%
+        filter(id == input$bank_choice &
+                 variable == input$asset_liability_choice & 
+                 adjusted == input$sa_nsa_choice &
+                 growth == input$growth_choice) %>%
+        mutate(date = myd(paste(date, "01"))) %>%
+        select(value) %>%
+        ts(.,frequency = 12) %>%
+        adf.test()
+      
+      if (stationarity$p.value > 0.05) {
+        print(paste("Based on the ADF test, this series is not stationary"))
+      } else {
+      print(paste("Based on the ADF test, this series is stationary"))
+      }
+      
+    })
+    
+    
     }
 
 shinyApp(ui, server)
+
+rsconnect::setAccountInfo(name='noah-forougi', token='88FA7355C04DBA967BB9009B34A64195', secret='ctyx4zu1dKlf8JOvzK1zieLj+B1nnCKboSyb55NV')
+
 
 
